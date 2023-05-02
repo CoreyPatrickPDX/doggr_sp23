@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import app from "./app.js";
 import {User} from "./db/entities/User.js";
+import {ICreateUsersBody} from "./types.js";
 
 async function DoggrRoutes(app:FastifyInstance, _options = {}) {
 	if (!app) {
@@ -14,38 +15,43 @@ async function DoggrRoutes(app:FastifyInstance, _options = {}) {
 	app.get("/dbTest", async (req, reply) => {
 		return req.em.find(User, {});
 	});
-	
-	app.post<{
-		Body: {
-			name: string,
-			email: string,
-			petType: string,
-		},
-		Reply: {
-			message: string,
+
+	app.route<{Body:{email:string}}>({
+		method: "SEARCH",
+		url: "/users",
+
+		handler: async (req, reply) => {
+			const {email} = req.body;
+			try {
+				const theUser =req.em.find(User, {email});
+				console.log(theUser);
+				reply.send(theUser);
+			} catch (err){
+				console.log(err);
+				reply.status(500).send(err);
+			}
 		}
-	}>("/users", async (req, reply: FastifyReply) => {
-		// Fish data out of request (auto converts from json)
-		const {name, email, petType} = req.body;
+	});
+	
+	app.post<{Body: ICreateUsersBody}>("/users", async (req, reply) => {
+		const { name, email, petType} = req.body;
 		
 		try {
-			// Get our manager from the plugin we wrote
 			const newUser = await req.em.create(User, {
 				name,
 				email,
 				petType
 			});
 			
-			// This will immediately update the real database.  You can store up several changes and flush only once
-			// NOTE THE AWAIT -- do not forget it or weirdness abounds
 			await req.em.flush();
 			
 			console.log("Created new user:", newUser);
 			return reply.send(newUser);
 		} catch (err) {
-			console.log("Failed to create new user: ", err.message);
-			return reply.status(500).send({ message: err.message});
+			console.log("Failed to create new user", err.message);
+			return reply.status(500).send({message: err.message});
 		}
+		
 	});
 }
 export default DoggrRoutes;
