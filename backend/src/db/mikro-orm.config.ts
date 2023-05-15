@@ -56,6 +56,6 @@ export default defineConfig({
 			}
 
 			return `Migration${timestamp}_${name}`;
-		},
-	},
+		}
+	}
 });

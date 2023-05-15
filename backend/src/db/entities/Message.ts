@@ -1,14 +1,24 @@
-import { Entity, Property, Unique, OneToMany, Collection, Cascade } from "@mikro-orm/core";
-import { BaseEntity } from "./BaseEntity.js";
+import {Entity, Property, ManyToOne, PrimaryKey} from "@mikro-orm/core";
+import type { Rel } from '@mikro-orm/core';
 import { User } from "./User.js";
 
-@Entity({ tableName: "users"})
-export class Message extends BaseEntity {
-    // who sent the message
-    @Property()
-    sender!: User;
+@Entity()
+export class Message {
+    @PrimaryKey()
+    id!: number;
 
-    // who received the message
+    // The account who sent the message
+    @ManyToOne()
+    sender_id!: Rel<User>;
+
+    // The account who received the message
+    @ManyToOne()
+    receiver_id!: Rel<User>;
+
+    // Message being sent
     @Property()
-    receiver!: User;
+    message!: string;
+
+    @Property()
+    sent_at = new Date();
 }

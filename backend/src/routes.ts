@@ -2,6 +2,11 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import { Match } from "./db/entities/Match.js";
 import {User} from "./db/entities/User.js";
 import {ICreateUsersBody} from "./types.js";
+import {Message} from "./db/entities/Message.js";
+
+import dotenv from "dotenv";
+import badWordFilter from "./plugins/bad_word_filter";
+dotenv.config();
 
 async function DoggrRoutes(app: FastifyInstance, _options = {}) {
 	if (!app) {
@@ -129,6 +134,146 @@ async function DoggrRoutes(app: FastifyInstance, _options = {}) {
 			return reply.status(500).send(err);
 		}
 
+	});
+
+	// CREATE MESSAGE ROUTES
+	// eslint-disable-next-line max-len
+	app.post<{Body: { sender: string, receiver: string, message: string }}>("/messages", async (req, reply) => {
+		const { sender, receiver, message } = req.body;
+
+		try {
+			if(badWordFilter(!message)) throw Error("Please refrain from using bad words.");
+			try {
+				// make sure that the matchee exists & get their user account
+				const sender_id = await req.em.findOne(User, { email: sender });
+				// do the same for the matcher/owner
+				const receiver_id = await req.em.findOne(User, { email: receiver });
+
+				//create a new match between them
+				const newMessage = await req.em.create(Message, {
+					sender_id,
+					receiver_id,
+					message
+				});
+
+				//persist it to the database
+				await req.em.flush();
+				// send the match back to the user
+				return reply.send(newMessage);
+			} catch (err) {
+				console.error(err);
+				return reply.status(500).send(err);
+			}
+		} catch(err){
+			console.error(err);
+			return reply.status(500).send(err);
+		}
+
+
+	});
+
+	// READ ALL MESSAGES SENT TO ME
+	app.search<{Body: { receiver: string }}>("/messages", async (req, reply) => {
+		const { receiver } = req.body;
+
+		try {
+			const theUser = await req.em.findOne(User, {email: receiver});
+			const theMessages = await req.em.find(Message, { receiver_id: theUser });
+			console.log(theMessages);
+			reply.send(theMessages);
+		} catch (err) {
+			console.error(err);
+			reply.status(500).send(err);
+		}
+	});
+
+	// READ ALL MESSAGES I'VE SENT
+	app.search<{Body: { sender: string }}>("/messages/sent", async (req, reply) => {
+		const { sender } = req.body;
+
+		try {
+			const theUser = await req.em.findOne(User, {email: sender});
+			const theMessages = await req.em.find(Message, { sender_id: theUser });
+			console.log(theMessages);
+			reply.send(theMessages);
+		} catch (err) {
+			console.error(err);
+			reply.status(500).send(err);
+		}
+	});
+
+	// UPDATE
+	app.put<{Body: { messageId: number, message: string }}>("/messages", async(req, reply) => {
+		const { messageId, message} = req.body;
+		try {
+			if (badWordFilter(!message)) throw Error("Please refrain from using bad words.");
+			try {
+				const messageToChange = await req.em.findOne(Message, {id: messageId});
+				messageToChange.message = message;
+
+				// Reminder -- this is how we persist our JS object changes to the database itself
+				await req.em.flush();
+				console.log(messageToChange);
+				reply.send(messageToChange);
+			} catch (err) {
+				console.error(err);
+				reply.status(500).send(err);
+			}
+		}catch(err){
+			console.error(err);
+			return reply.status(500).send(err);
+		}
+
+
+	});
+
+	// DELETE A MESSAGE
+	app.delete<{ Body: {messageId: number, password: string}}>("/messages", async(req, reply) => {
+		const { messageId, password } = req.body;
+
+		try{
+			if(password !== process.env.ADMIN_PASS) throw Error("Wrong Password");
+			try {
+				const theMessage = await req.em.findOne(Message, { id: messageId });
+
+				await req.em.remove(theMessage).flush();
+				console.log(theMessage);
+				reply.send(theMessage);
+			} catch (err) {
+				console.error(err);
+				reply.status(500).send(err);
+			}
+		} catch (err) {
+			console.error(err);
+			reply.status(401).send(err);
+		}
+
+	});
+
+	// DELETE ALL SENT MESSAGES
+	app.delete<{ Body: {sender: string, password: string}}>("/messages/all", async(req, reply) => {
+		const { sender, password } = req.body;
+		try {
+			if (password !== process.env.ADMIN_PASS) throw Error("Wrong Password");
+			try {
+				const sender_id = await req.em.findOne(User, {email: sender});
+
+				const theMessages = await req.em.find(Message, {sender_id});
+
+				reply.send(theMessages);
+				for (const theMessage of theMessages) {
+					await req.em.remove(theMessage).flush();
+					console.log(theMessage);
+				}
+
+			} catch (err) {
+				console.error(err);
+				reply.status(500).send(err);
+			}
+		} catch (err) {
+			console.error(err);
+			reply.status(401).send(err);
+		}
 	});
 }
 
